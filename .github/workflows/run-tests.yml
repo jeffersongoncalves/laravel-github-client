@@ -10,10 +10,10 @@ jobs:
   l11:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        php: [8.2, 8.3]
+        php: [8.2, 8.3, 8.4]
         laravel: [^11.0]
         stability: [prefer-stable]
 
@@ -49,10 +49,10 @@ jobs:
   l12:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        php: [8.2, 8.3]
+        php: [8.2, 8.3, 8.4]
         laravel: [^12.0]
         stability: [prefer-stable]
 
@@ -88,7 +88,7 @@ jobs:
   l13:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
         php: [8.3, 8.4]

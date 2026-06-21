@@ -28,5 +28,6 @@
 
 # Export ignore
 /.github export-ignore
+/resources/boost export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore

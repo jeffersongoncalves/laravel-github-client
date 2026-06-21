@@ -5,6 +5,7 @@ namespace JeffersonGoncalves\GitHubClient;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use JeffersonGoncalves\GitHubClient\Exceptions\GitHubRateLimitException;
 use Throwable;
 
@@ -36,6 +37,8 @@ class GitHubClient
      */
     public static function repoStatus(string $repoSlug): string
     {
+        self::assertValidSlug($repoSlug);
+
         $response = self::githubGet("https://api.github.com/repos/{$repoSlug}");
 
         if ($response === null) {
@@ -58,6 +61,8 @@ class GitHubClient
      */
     public static function fetchRepo(string $repoSlug): ?array
     {
+        self::assertValidSlug($repoSlug);
+
         $response = self::githubGet("https://api.github.com/repos/{$repoSlug}");
 
         if ($response === null || ! $response->successful()) {
@@ -91,7 +96,9 @@ class GitHubClient
      */
     public static function subdirectoryHasReadme(string $repoSlug, string $directory): bool
     {
-        $response = self::githubGet("https://api.github.com/repos/{$repoSlug}/readme/{$directory}");
+        self::assertValidSlug($repoSlug);
+
+        $response = self::githubGet('https://api.github.com/repos/'.$repoSlug.'/readme/'.self::encodePath($directory));
 
         return $response !== null && $response->successful();
     }
@@ -101,17 +108,13 @@ class GitHubClient
      */
     public static function fetchManifest(string $repoSlug, string $branch, string $file): ?array
     {
-        try {
-            $response = Http::timeout(self::timeout())
-                ->withHeaders(['User-Agent' => self::userAgent()])
-                ->get("https://raw.githubusercontent.com/{$repoSlug}/{$branch}/{$file}");
-        } catch (Throwable $e) {
-            self::logFailure('github_manifest', "{$repoSlug}/{$branch}/{$file}", $e);
+        self::assertValidSlug($repoSlug);
 
-            return null;
-        }
+        $url = 'https://raw.githubusercontent.com/'.$repoSlug.'/'.self::encodePath($branch).'/'.self::encodePath($file);
 
-        if (! $response->successful()) {
+        $response = self::rawFetch('get', $url, 'github_manifest');
+
+        if ($response === null || ! $response->successful()) {
             return null;
         }
 
@@ -125,6 +128,8 @@ class GitHubClient
      */
     public static function fetchBranches(string $repoSlug): array
     {
+        self::assertValidSlug($repoSlug);
+
         $response = self::githubGet("https://api.github.com/repos/{$repoSlug}/branches", ['per_page' => 100]);
 
         if ($response === null || ! $response->successful()) {
@@ -148,17 +153,13 @@ class GitHubClient
      */
     public static function fileExists(string $repoSlug, string $branch, string $file): bool
     {
-        try {
-            $response = Http::timeout(self::timeout())
-                ->withHeaders(['User-Agent' => self::userAgent()])
-                ->head("https://raw.githubusercontent.com/{$repoSlug}/{$branch}/{$file}");
-        } catch (Throwable $e) {
-            self::logFailure('github_file_head', "{$repoSlug}/{$branch}/{$file}", $e);
+        self::assertValidSlug($repoSlug);
 
-            return false;
-        }
+        $url = 'https://raw.githubusercontent.com/'.$repoSlug.'/'.self::encodePath($branch).'/'.self::encodePath($file);
 
-        return $response->successful();
+        $response = self::rawFetch('head', $url, 'github_file_head');
+
+        return $response !== null && $response->successful();
     }
 
     /**
@@ -188,6 +189,64 @@ class GitHubClient
         self::throwIfRateLimited($response);
 
         return $response;
+    }
+
+    /**
+     * Shared fetch for raw.githubusercontent.com content. Unlike the REST
+     * host, raw fetches still need the bearer token (private repos answer 404
+     * without it) and must run through the same rate-limit detection so a
+     * limit window throws rather than silently returning a 404/null.
+     *
+     * @param  'get'|'head'  $method
+     *
+     * @throws GitHubRateLimitException when GitHub answers with a rate-limit 403/429
+     */
+    private static function rawFetch(string $method, string $url, string $context): ?Response
+    {
+        $headers = ['User-Agent' => self::userAgent()];
+
+        if ($token = self::token()) {
+            $headers['Authorization'] = "Bearer {$token}";
+        }
+
+        try {
+            $request = Http::timeout(self::timeout())->withHeaders($headers);
+            $response = $method === 'head' ? $request->head($url) : $request->get($url);
+        } catch (Throwable $e) {
+            self::logFailure($context, $url, $e);
+
+            return null;
+        }
+
+        // Mirrors githubGet: detect rate limiting outside the catch so the
+        // exception propagates instead of being logged as a generic failure.
+        self::throwIfRateLimited($response);
+
+        return $response;
+    }
+
+    /**
+     * Guard against unvalidated owner/repo input being interpolated straight
+     * into a URL. Accepts only `owner/repo` where each side is limited to the
+     * characters GitHub permits in account and repository names.
+     *
+     * @throws InvalidArgumentException
+     */
+    private static function assertValidSlug(string $repoSlug): void
+    {
+        if (preg_match('#^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$#', $repoSlug) !== 1) {
+            throw new InvalidArgumentException("Invalid GitHub repository slug: [{$repoSlug}]. Expected the form 'owner/repo'.");
+        }
+    }
+
+    /**
+     * rawurlencode each segment of a slash-delimited path (branch, file, or
+     * directory) so characters like `#`, `?`, or spaces can't break out of the
+     * intended URL path while real path separators are preserved.
+     */
+    private static function encodePath(string $path): string
+    {
+        return implode('/', array_map('rawurlencode', explode('/', $path)));
     }
 
     /**
