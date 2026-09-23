@@ -8,7 +8,7 @@
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-FFDD00?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/jeffersongoncalves)
 
-[![Tests](https://github.com/jeffersongoncalves/laravel-github-client/actions/workflows/run-tests.yml/badge.svg)](https://github.com/jeffersongoncalves/laravel-github-client/actions/workflows/run-tests.yml)
+[![Tests](https://github.com/jeffersongoncalves/laravel-github-client/actions/workflows/tests.yml/badge.svg)](https://github.com/jeffersongoncalves/laravel-github-client/actions/workflows/tests.yml)
 [![PHPStan](https://github.com/jeffersongoncalves/laravel-github-client/actions/workflows/phpstan.yml/badge.svg)](https://github.com/jeffersongoncalves/laravel-github-client/actions/workflows/phpstan.yml)
 [![Code Style](https://github.com/jeffersongoncalves/laravel-github-client/actions/workflows/fix-php-code-style-issues.yml/badge.svg)](https://github.com/jeffersongoncalves/laravel-github-client/actions/workflows/fix-php-code-style-issues.yml)
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/jeffersongoncalves/laravel-github-client.svg?style=flat-square)](https://packagist.org/packages/jeffersongoncalves/laravel-github-client)
