@@ -1,6 +1,6 @@
 <div class="filament-hidden">
 
-![Laravel GitHub Client](https://raw.githubusercontent.com/jeffersongoncalves/laravel-github-client/master/art/jeffersongoncalves-laravel-github-client.png)
+![Laravel GitHub Client](https://raw.githubusercontent.com/jeffersongoncalves/laravel-github-client/main/art/jeffersongoncalves-laravel-github-client.png)
 
 </div>
 
