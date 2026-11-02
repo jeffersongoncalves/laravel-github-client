@@ -112,6 +112,21 @@ it('fetches version branches via GraphQL', function () {
         && $request['variables'] === ['owner' => 'owner', 'name' => 'repo']);
 });
 
+it('throws on a GraphQL rate limit returned as HTTP 200', function () {
+    Http::fake([
+        'api.github.com/graphql' => Http::response([
+            'data' => null,
+            'errors' => [['type' => 'RATE_LIMITED', 'message' => 'API rate limit exceeded']],
+        ], 200, [
+            'X-RateLimit-Remaining' => '0',
+            'X-RateLimit-Reset' => (string) (time() + 300),
+        ]),
+    ]);
+
+    expect(fn () => GitHubClient::fetchVersionBranches('owner/repo'))
+        ->toThrow(GitHubRateLimitException::class);
+});
+
 it('returns no version branches when GraphQL fails', function () {
     Http::fake([
         'api.github.com/graphql' => Http::response(['message' => 'Bad credentials'], 401),

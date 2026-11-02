@@ -180,6 +180,15 @@ class GitHubClient
             return [];
         }
 
+        // GraphQL reports rate limits as HTTP 200 with a RATE_LIMITED error
+        // (or an exhausted quota and no data), which throwIfRateLimited can't see.
+        $rateLimited = collect((array) $response->json('errors'))->contains('type', 'RATE_LIMITED')
+            || ($response->header('X-RateLimit-Remaining') === '0' && $response->json('data.repository') === null);
+
+        if ($rateLimited) {
+            throw new GitHubRateLimitException(max(60, ((int) $response->header('X-RateLimit-Reset')) - time()));
+        }
+
         $names = [];
 
         foreach ((array) $response->json('data.repository.refs.nodes') as $node) {
