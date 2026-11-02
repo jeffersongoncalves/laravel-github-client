@@ -84,7 +84,8 @@ GitHubClient::fetchRepo('owner/repo');                    // array<string,mixed>
 GitHubClient::fetchDefaultBranchForSlug('owner/repo');    // ?string
 GitHubClient::subdirectoryHasReadme('owner/repo', 'dir'); // bool
 GitHubClient::fetchManifest('owner/repo', 'main', 'composer.json'); // array<string,mixed>|null
-GitHubClient::fetchBranches('owner/repo');                // list<string>
+GitHubClient::fetchBranches('owner/repo', maxPages: 10);  // list<string>, paginated, capped
+GitHubClient::fetchVersionBranches('owner/repo');         // list<string> of *.x (GraphQL, token required)
 GitHubClient::fileExists('owner/repo', 'main', 'Dockerfile'); // bool
 ```
 
