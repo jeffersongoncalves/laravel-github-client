@@ -70,6 +70,71 @@ it('parses branch names', function () {
     expect(GitHubClient::fetchBranches('owner/repo'))->toBe(['main', 'develop']);
 });
 
+it('follows Link rel="next" across branch pages', function () {
+    Http::fake([
+        'api.github.com/repos/*/branches*' => Http::sequence()
+            ->push([['name' => 'a']], 200, ['Link' => '<https://api.github.com/repositories/1/branches?per_page=100&page=2>; rel="next"'])
+            ->push([['name' => 'main']], 200),
+    ]);
+
+    expect(GitHubClient::fetchBranches('owner/repo'))->toBe(['a', 'main']);
+    Http::assertSentCount(2);
+});
+
+it('caps branch pagination at maxPages', function () {
+    $next = ['Link' => '<https://api.github.com/repositories/1/branches?page=9>; rel="next"'];
+
+    Http::fake([
+        'api.github.com/repos/*/branches*' => Http::sequence()
+            ->push([['name' => 'a']], 200, $next)
+            ->push([['name' => 'b']], 200, $next)
+            ->push([['name' => 'c']], 200, $next),
+    ]);
+
+    expect(GitHubClient::fetchBranches('owner/repo', maxPages: 2))->toBe(['a', 'b']);
+    Http::assertSentCount(2);
+    Http::assertSent(fn (Request $request) => str_contains($request->url(), 'page=2'));
+});
+
+it('fetches version branches via GraphQL', function () {
+    Http::fake([
+        'api.github.com/graphql' => Http::response(['data' => ['repository' => ['refs' => ['nodes' => [
+            ['name' => '3.x'],
+            ['name' => '4.x'],
+            ['name' => 'feature/fix.xml'],
+        ]]]]], 200),
+    ]);
+
+    expect(GitHubClient::fetchVersionBranches('owner/repo'))->toBe(['3.x', '4.x']);
+
+    Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+        && str_contains($request['query'], 'query: ".x"')
+        && $request['variables'] === ['owner' => 'owner', 'name' => 'repo']);
+});
+
+it('throws on a GraphQL rate limit returned as HTTP 200', function () {
+    Http::fake([
+        'api.github.com/graphql' => Http::response([
+            'data' => null,
+            'errors' => [['type' => 'RATE_LIMITED', 'message' => 'API rate limit exceeded']],
+        ], 200, [
+            'X-RateLimit-Remaining' => '0',
+            'X-RateLimit-Reset' => (string) (time() + 300),
+        ]),
+    ]);
+
+    expect(fn () => GitHubClient::fetchVersionBranches('owner/repo'))
+        ->toThrow(GitHubRateLimitException::class);
+});
+
+it('returns no version branches when GraphQL fails', function () {
+    Http::fake([
+        'api.github.com/graphql' => Http::response(['message' => 'Bad credentials'], 401),
+    ]);
+
+    expect(GitHubClient::fetchVersionBranches('owner/repo'))->toBe([]);
+});
+
 it('returns true when a file HEAD succeeds', function () {
     Http::fake([
         'raw.githubusercontent.com/*' => Http::response('', 200),

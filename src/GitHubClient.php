@@ -124,23 +124,77 @@ class GitHubClient
     }
 
     /**
+     * List branch names, following the `Link: rel="next"` header for up to
+     * $maxPages pages of 100 (one REST call per page). Repos with more than
+     * $maxPages * 100 branches come back truncated — "not in the list" does
+     * not mean "doesn't exist". Use fetchVersionBranches() for `*.x` lookups.
+     *
      * @return list<string>
      */
-    public static function fetchBranches(string $repoSlug): array
+    public static function fetchBranches(string $repoSlug, int $maxPages = 10): array
     {
         self::assertValidSlug($repoSlug);
 
-        $response = self::githubGet("https://api.github.com/repos/{$repoSlug}/branches", ['per_page' => 100]);
+        $names = [];
+
+        for ($page = 1; $page <= $maxPages; $page++) {
+            $response = self::githubGet("https://api.github.com/repos/{$repoSlug}/branches", ['per_page' => 100, 'page' => $page]);
+
+            if ($response === null || ! $response->successful()) {
+                break;
+            }
+
+            foreach ((array) $response->json() as $branch) {
+                if (is_array($branch) && isset($branch['name']) && is_string($branch['name'])) {
+                    $names[] = $branch['name'];
+                }
+            }
+
+            if (! str_contains($response->header('Link'), 'rel="next"')) {
+                break;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * Version branches (names ending in `.x`) via one GraphQL call, regardless
+     * of how many branches the repo has. GraphQL requires a token; without one
+     * GitHub answers 401 and this returns [].
+     *
+     * @return list<string>
+     */
+    public static function fetchVersionBranches(string $repoSlug): array
+    {
+        self::assertValidSlug($repoSlug);
+
+        [$owner, $name] = explode('/', $repoSlug);
+
+        $response = self::githubRequest('post', 'https://api.github.com/graphql', [
+            'query' => 'query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { refs(refPrefix: "refs/heads/", first: 100, query: ".x") { nodes { name } } } }',
+            'variables' => ['owner' => $owner, 'name' => $name],
+        ]);
 
         if ($response === null || ! $response->successful()) {
             return [];
         }
 
+        // GraphQL reports rate limits as HTTP 200 with a RATE_LIMITED error
+        // (or an exhausted quota and no data), which throwIfRateLimited can't see.
+        $rateLimited = collect((array) $response->json('errors'))->contains('type', 'RATE_LIMITED')
+            || ($response->header('X-RateLimit-Remaining') === '0' && $response->json('data.repository') === null);
+
+        if ($rateLimited) {
+            throw new GitHubRateLimitException(max(60, ((int) $response->header('X-RateLimit-Reset')) - time()));
+        }
+
         $names = [];
 
-        foreach ((array) $response->json() as $branch) {
-            if (is_array($branch) && isset($branch['name']) && is_string($branch['name'])) {
-                $names[] = $branch['name'];
+        foreach ((array) $response->json('data.repository.refs.nodes') as $node) {
+            // ponytail: GraphQL `query` is a substring match, so keep only true `.x` suffixes
+            if (is_array($node) && isset($node['name']) && is_string($node['name']) && str_ends_with($node['name'], '.x')) {
+                $names[] = $node['name'];
             }
         }
 
@@ -169,6 +223,17 @@ class GitHubClient
      */
     private static function githubGet(string $url, array $params = []): ?Response
     {
+        return self::githubRequest('get', $url, $params);
+    }
+
+    /**
+     * @param  'get'|'post'  $method
+     * @param  array<string, mixed>  $params  query string for GET, JSON body for POST
+     *
+     * @throws GitHubRateLimitException when GitHub answers with a rate-limit 403/429
+     */
+    private static function githubRequest(string $method, string $url, array $params = []): ?Response
+    {
         $headers = ['User-Agent' => self::userAgent(), 'Accept' => 'application/vnd.github+json'];
 
         if ($token = self::token()) {
@@ -176,7 +241,8 @@ class GitHubClient
         }
 
         try {
-            $response = Http::timeout(self::timeout())->withHeaders($headers)->get($url, $params);
+            $request = Http::timeout(self::timeout())->withHeaders($headers);
+            $response = $method === 'post' ? $request->post($url, $params) : $request->get($url, $params);
         } catch (Throwable $e) {
             self::logFailure('github_api', $url, $e);
 

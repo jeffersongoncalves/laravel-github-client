@@ -23,7 +23,7 @@ A lightweight GitHub REST API client for Laravel. It wraps the `api.github.com` 
 - **Repository metadata** — `fetchRepo()` and `fetchDefaultBranchForSlug()`
 - **README detection** — `subdirectoryHasReadme()` for monorepo subfolders
 - **Raw content** — `fetchManifest()` to read JSON files and `fileExists()` to HEAD a path without downloading it
-- **Branch listing** — `fetchBranches()` returns the branch names
+- **Branch listing** — `fetchBranches()` returns the branch names, following pagination up to `$maxPages` (default 10 × 100 branches, one REST call per page); `fetchVersionBranches()` returns only `*.x` branches in a single GraphQL call (token required)
 - **Rate-limit aware** — throws `GitHubRateLimitException` on a primary (403 + `X-RateLimit-Remaining: 0`) or secondary (403/429 + `Retry-After`) limit, carrying the `retryAfter` seconds
 
 ## Installation
@@ -76,7 +76,8 @@ $repo = GitHubClient::fetchRepo('jeffersongoncalves/laravel-github-client');
 $branch = GitHubClient::fetchDefaultBranchForSlug('jeffersongoncalves/laravel-github-client');
 
 // Branches
-$branches = GitHubClient::fetchBranches('jeffersongoncalves/laravel-github-client');
+$branches = GitHubClient::fetchBranches('jeffersongoncalves/laravel-github-client'); // up to 10 pages
+$versions = GitHubClient::fetchVersionBranches('jeffersongoncalves/laravel-github-client'); // ['1.x', '2.x', ...]
 
 // Raw content
 $composer = GitHubClient::fetchManifest('jeffersongoncalves/laravel-github-client', 'main', 'composer.json');
